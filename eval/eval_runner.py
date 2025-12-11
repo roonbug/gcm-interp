@@ -212,7 +212,7 @@ def run_eval(config, data_handler, model_handler, batch_handler, patching_utils,
                             patching_utils.get_response_logits,
                             config.args.N
                         )
-                        edited_outputs = generate_with_patches(model, gen_qs_toks, patching_reps[ablation], topk_df, config.args.N, ablation, model_handler.dim, max_new_tokens=256, normalize=True)
+                        edited_outputs = generate_with_patches(model, gen_qs_toks, patching_reps[ablation], topk_df, config.args.N, ablation, model_handler.dim, max_new_tokens=256, normalize=False)
                         decoded = decode_responses(model, gen_qs_toks, original_outputs[idx:idx+config.args.batch_size], edited_outputs, config.args.base)
                         gc.collect()
                         torch.cuda.empty_cache()
