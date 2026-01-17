@@ -29,8 +29,8 @@ class Experiment:
 
     def run(self):
         for idx in tqdm(range(self.config.args.batch_start, self.data_handler.LEN, self.batch_size)):
-            # if os.path.exists(f'{self.config.get_output_prefix()}/{self.which_patch}_{idx}.pt'):
-            #     continue
+            if os.path.exists(f'{self.config.get_output_prefix()}/{self.which_patch}_{idx}.pt'):
+                continue
             start = idx
             stop = min(idx + self.batch_size, self.data_handler.LEN)
             print(f'Running patching on {self.which_patch} from {start} to {stop}')
