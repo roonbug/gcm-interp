@@ -16,7 +16,6 @@ class DataHandler:
         
         file_paths = {
             'base_desired': f"{self.config.args.data_path}/{self.config.args.base}-desired-all.jsonl",
-            'prompting_base_desired': f"{self.config.args.data_path}/prompting.jsonl",
             'base_undesired': f"{self.config.args.data_path}/{self.config.args.base}-undesired-all.jsonl",
             'source_desired': f"{self.config.args.data_path}/{self.config.args.source}-desired-all.jsonl",
             'source_undesired': f"{self.config.args.data_path}/{self.config.args.source}-undesired-all.jsonl",
@@ -26,7 +25,6 @@ class DataHandler:
 
         jsons = {
             'base_desired': self.load_from_jsonl(file_paths['base_desired']),
-            'prompting_base_desired': self.load_from_jsonl(file_paths['prompting_base_desired']),
             'base_undesired': self.load_from_jsonl(file_paths['base_undesired']),
             'source_desired': self.load_from_jsonl(file_paths['source_desired']),
             'source_undesired': self.load_from_jsonl(file_paths['source_undesired']),
@@ -34,7 +32,6 @@ class DataHandler:
             'eval_test': self.load_from_jsonl(file_paths['eval_test']) if self.config.args.eval_transfer else None
         }
 
-        mmlu = pd.read_csv(file_paths['mmlu'])
         jsons = self.filter_jsons(jsons)
 
         print('Making base templated prompts...')
@@ -95,15 +92,12 @@ class DataHandler:
 
                 start_indices = [i for i in range(len(jsons['eval_test'])) if i % 5 == 0]
 
-                # Step 2: Randomly sample 40 starting indices
                 selected_starts = random.sample(start_indices, 40)
 
-                # Step 3: For each start, take that index and the next 4
                 random_indices = []
                 for start in selected_starts:
                     block = [start + offset for offset in range(5)]
                     random_indices.extend(block)
-                # random_indices = list(range(len(jsons['eval_test'])))
                 print('###### Making eval_test dataset templated prompts...')
                 self.eval_transfer = {
                     "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_test'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=None),
@@ -112,7 +106,7 @@ class DataHandler:
                 if self.eval_transfer['queries']['input_ids'].shape[1] < self.max_len:
                     self.eval_transfer = {
                         "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_test'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=self.max_len),
-                        "answers": [p['base']['correct_answer'] for p in jsons['eval_test']] if self.config.args.judge_answer_match else None,
+                        "answers": None
                     }
                 else:
                     self.max_len = self.eval_transfer['queries']['input_ids'].shape[1]
@@ -134,10 +128,6 @@ class DataHandler:
 
         self.pyreft_prompts = self.get_templated_prompts(jsons['base_desired'], _base_completion=jsons['source_desired'], add_generation_prompt=False)
         self.pyreft_toks = self.tokenize_prompts(self.pyreft_prompts, max_length=self.max_len)
-                 
-        
-        self.prompting_prompts = self.get_templated_prompts(jsons['prompting_base_desired'], add_generation_prompt=True)
-        self.prompting_toks = self.tokenize_prompts(self.prompting_prompts, max_length=self.max_len)
 
         self.response_start_positions = {
             "base": {
@@ -146,15 +136,14 @@ class DataHandler:
             "pyreft": self.get_resp_start_pos(self.pyreft_toks, self.model_handler.marker, self.model_handler.tokenizer)
         }
 
-        if self.config.args.eval_test_dataset:
-            self.LEN = self.eval_test_dataset['queries']['input_ids'].shape[0]
+
+        if self.config.args.eval_model:
+            self.LEN = min(len(base['desired']), 100)
         else:
-            if self.config.args.eval_model:
-                self.LEN = min(len(base['desired']), 100)
-            else:
-                self.LEN = min(len(base['desired']), 50)
+            self.LEN = min(len(base['desired']), 50)
 
         self.truncate_to_len(self.LEN)
+    
     def truncate_to_len(self, L):
         self.LEN = L
         for key in self.base_toks:
@@ -186,21 +175,6 @@ class DataHandler:
             if self.no_generation_prompt_for_eval_test:
                 print('Explicitly setting add_generation_prompt to False for eval_test dataset.')
                 add_generation_prompt = False
-                # prompt_lengths = [len(p['prompt']) for p in prompts]
-                # return [
-                #     self.model_handler.tokenizer.apply_chat_template(
-                #         [p['prompt'][i] for i in range(prompt_lengths[pdx])],
-                #         add_generation_prompt=add_generation_prompt,
-                #         tokenize=False
-                #     ) for pdx, p in enumerate(prompts)]
-                # return [
-                #     re.sub(r"(The answer is \().*", r"\1", self.model_handler.tokenizer.apply_chat_template(
-                #         [p['prompt'][i] for i in range(prompt_lengths[pdx])],
-                #         add_generation_prompt=add_generation_prompt,
-                #         tokenize=False
-                #     )).strip() for pdx, p in enumerate(prompts)]
-            # else:
-                # print('Adding generation_prompt to False for eval_test dataset.')
             print(prompts[0]['prompt'], [p['role'] == 'assistant' for p in prompts[0]['prompt']])
             assistant_exists = any([p['role'] == 'assistant' for p in prompts[0]['prompt']])
             if assistant_exists:
@@ -233,8 +207,6 @@ class DataHandler:
     def get_resp_start_pos(self, tokens, marker, tokenizer):
         print_now = True
         response_start_positions = []
-        # print('###### Marker Tokens:', self.model_handler.alignment_tokens.tolist(), '######\n')
-        # print('###### Marker String:', marker, '######\n')
         for _, tok in tqdm(enumerate(tokens['input_ids']), desc="Finding response start positions..."):
             tok = tok.to(self.device)
             response_start_position = None
@@ -246,21 +218,12 @@ class DataHandler:
                     break
             assert response_start_position is not None, f"Marker {repr(marker)} not found in input {repr(tokenizer.decode(tok))}.\nTOKENS: {repr(tok)}\nMARKER: {repr(marker_tokens)}"
             response_start_positions.append(response_start_position)
-        #     if print_now:
-        #         print('#################### RESPONSE START POSITIONS #######################')
-        #         print('--------------------------------------------------------------------------------')
-        #         print(f'"{repr(self.model_handler.tokenizer.decode(tok[:response_start_position], skip_special_tokens=False))}"')
-        #         print(f'"{repr(self.model_handler.tokenizer.decode(tok[response_start_position:], skip_special_tokens=False))}"')
-        #         print_now = False
-        #         print('--------------------------------------------------------------------------------')
-        # print(f"Found response start positions {response_start_positions} prompts.")
         return response_start_positions
     
     def tokenize_prompts(self, p, max_length=None):
         if max_length is None:
             tokens = self.model_handler.tokenizer(p, padding=True, truncation=False, return_tensors="pt")
         else:
-            # print('Using max length:', max_length)
             tokens =  self.model_handler.tokenizer(p, padding='max_length', max_length=self.max_len, truncation=True, return_tensors="pt")
         return {"input_ids": tokens["input_ids"].to(self.device), "attention_mask": tokens["attention_mask"].to(self.device)}
     
@@ -268,7 +231,6 @@ class DataHandler:
         return self.model_handler.tokenizer.decode(p, skip_special_tokens=True)
 
     def align_toks(self, source_toks, base_toks):
-        # print(source_toks['input_ids'], base_toks['input_ids'])
         """
         Align source_toks to base_toks at the assistant alignment token subsequence.
         """
@@ -284,8 +246,6 @@ class DataHandler:
         toks_mod = {"input_ids": [], "attention_mask": []}
         align_seq = self.model_handler.alignment_tokens.tolist()
         pad_token_id = self.model_handler.tokenizer.pad_token_id
-
-        # print(source_toks["input_ids"].shape, base_toks["input_ids"].shape)
         for i in range(len(base_toks["input_ids"])):
             src_ids = source_toks["input_ids"][i]
 
@@ -301,8 +261,6 @@ class DataHandler:
             base_start = find_subseq_start(base_list, align_seq)
 
             if src_start == -1 or base_start == -1:
-                # print("Base decode:", self.model_handler.tokenizer.convert_ids_to_tokens(base_ids.tolist()))
-                # print("Source decode:", self.model_handler.tokenizer.convert_ids_to_tokens(src_ids.tolist()))
                 raise AssertionError(f"Assistant alignment sequence {align_seq} {self.model_handler.tokenizer.convert_ids_to_tokens(align_seq)} not found in example {i}. Source start: {src_start}, Base start: {base_start}")
 
             offset = src_start - base_start

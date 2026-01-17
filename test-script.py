@@ -14,10 +14,10 @@ from tqdm import tqdm
 import random
 
 run_dict = {
-    # 'Qwen/Qwen1.5-14B-Chat': {
-    #     'N': 8,
-    #     'topk_vals': [0.04, 0.08, 0.09]
-    # },
+    'Qwen/Qwen1.5-14B-Chat': {
+        'N': 8,
+        'topk_vals': [0.04, 0.08, 0.09]
+    },
     'allenai/OLMo-2-1124-13B-DPO': {
         'N': 10,
         'topk_vals': [0.06, 0.09, 0.1]
@@ -99,28 +99,7 @@ for model_id in run_dict.keys():
 
         def set_output_prefix(self):
             model = self.args.model_id.split('/')[-1]
-            # timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
             if self.args.patch_model or self.args.eval_model:
-                # if self.args.eval_test_dataset:
-                #     with open(f"./runs/{model}/from_{self.args.source}_to_{self.args.base}/atp/eval/gen_best_config_summary.json", 'r') as f:
-                #         decoded_responses = json.load(f)
-                #         print(decoded_responses)
-                #     try:
-                #         decoded_responses = [d for d in decoded_responses if d["model"] == self.args.model_id.split('/')[-1]][0]
-                #     except Exception as e:
-                #         print(decoded_responses)
-                #         raise ValueError(f"No responses found for model {self.args.model_id.split('/')[-1]} in the provided JSON file.")
-
-                #     patch_algo = max(
-                #         decoded_responses["best"][f"from_{self.args.source}_to_{self.args.base}"].items(),
-                #         key=lambda item: round(item[1]["accuracy"], 2)
-                #     )
-                #     self.args.patch_algo, patch_algo_params = patch_algo
-                #     print(f"Best Method: {patch_algo}, topk: {patch_algo_params['topk']}, sf: {patch_algo_params['sf']}, accuracy: {patch_algo_params['accuracy']}")
-
-                #     topk = patch_algo_params["topk"]
-                #     sf = patch_algo_params["sf"]
-                #     self.args.N = 10
                 self.output_prefix = f"./runs-new/{model}/from_{self.args.source}_to_{self.args.base}/{self.args.patch_algo}/"
             print(self.output_prefix)
             return self.output_prefix
