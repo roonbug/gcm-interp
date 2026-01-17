@@ -71,43 +71,6 @@ def save_judge_accuracy(acc, path):
         json.dump(acc, f)
     print(f"Saved judge accuracy to {path}")
 
-def call_judge(model_handler, config, data_handler, ablations, reps_types, topk_vals, gen_file=None):
-    judge_model = model_handler.load_model(config.args.judge_id, config.args.device,model_type='judge')
-    tokenizer = model_handler.load_tokenizer(config.args.judge_id)
-    for ablation in tqdm(ablations):
-        for reps_type in tqdm(reps_types, desc="Reps Types"):
-            for topk in tqdm(topk_vals, desc="TopK Values"):
-                if gen_file is None:
-                    gen_file = f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_gen.json"
-                    acc_path = f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_gen_accuracy.json"
-                else:
-                    acc_path = f"{gen_file.replace('.json', '_accuracy.json')}"
-                print('gen file ', gen_file)
-                print('acc path ', acc_path)
-                with open(gen_file, 'r') as f:
-                    decoded_responses = json.load(f)
-                    # print(decoded_responses)
-                print(f"Eval [[GEN]] → Ablation: {ablation}, Reps: {reps_type}, TopK: {topk}")
-                print(acc_path)
-                if not os.path.exists(acc_path):
-                    assert len(decoded_responses) > 0, "No responses to evaluate."
-                    if config.args.judge_answer_match:
-                        acc, responses = compute_judge_accuracy_test(judge_model, tokenizer, decoded_responses, data_handler.judge_qs, config.args.base, config.args.source)
-                        save_judge_accuracy(acc, acc_path)
-                        save_judge_accuracy(responses, f"{config.get_output_prefix()}/eval_test/{config.args.N}_{config.args.eval_transfer}_{reps_type}_{ablation}_topk_{topk}_gen_accuracy_responses.json")
-                    else:
-                        acc, responses = compute_judge_accuracy(judge_model, tokenizer, decoded_responses, data_handler.judge_qs, config.args.base, config.args.source)
-                        print('acc ', acc)
-                        save_judge_accuracy(acc, acc_path)
-                        save_judge_accuracy(responses, acc_path.replace("_accuracy.json", "_accuracy_responses.json"))
-                gen_file = None
-                acc_path = None
-
-    del judge_model
-    del tokenizer
-    gc.collect()
-    torch.cuda.empty_cache()
-
 def save_top_k(reps_type, config, model, topk, logits, logit_metric):
     if reps_type == 'random':
         topk_df = retrieve_random_k(
@@ -184,13 +147,11 @@ def run_eval(config, data_handler, model_handler, batch_handler, patching_utils,
                     if os.path.exists(f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_gen.txt") and os.path.exists(f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_gen.json"):
                         print(f"Skipping evaluation for {ablation}, {reps_type}, {topk} {config.args.N} as gen files already exist.")
                         continue
-                    patch_logits = None
                     decoded_responses[ablation][reps_type][topk] = []
                     gen_file = f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_gen.txt"
                     print(f"Eval [[LOGITS]] → Ablation: {ablation}, Reps: {reps_type}, TopK: {topk}, N: {config.args.N}, algo: {config.args.patch_algo}, task: {config.args.source} -> {config.args.base}")
 
                     if os.path.exists(gen_file) and os.path.exists(gen_file.replace('.txt', '.json')) and os.path.exists(f"{config.get_output_prefix()}/eval_test/{logit_metric}_{reps_type}_{topk}.csv"):
-                    # and os.path.exists(f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_gen_accuracy.json"):
                         print(f"Skipping generation as all relevant files exist.")
                         continue
                     if not os.path.exists(f"{config.get_output_prefix()}/eval_test/{logit_metric}_{reps_type}_{topk}.csv"):
@@ -202,242 +163,22 @@ def run_eval(config, data_handler, model_handler, batch_handler, patching_utils,
                     len_gen_qs = select_gen_qs_toks(config, data_handler)['input_ids'].shape[0]
                     for idx in tqdm(range(0, min(data_handler.LEN, len_gen_qs), config.args.batch_size)):
                         gen_qs_toks = select_gen_qs_toks(config, batch_handler)
-                        # Compute logit scores after edit
-                        post_patch_logit_scores = compute_logit_scores(
-                            batch_handler,
-                            topk_df,
-                            patching_reps[ablation],
-                            model_handler,
-                            ablation,
-                            patching_utils.get_response_logits,
-                            config.args.N
-                        )
                         edited_outputs = generate_with_patches(model, gen_qs_toks, patching_reps[ablation], topk_df, config.args.N, ablation, model_handler.dim, max_new_tokens=256, normalize=False)
                         decoded = decode_responses(model, gen_qs_toks, original_outputs[idx:idx+config.args.batch_size], edited_outputs, config.args.base)
                         gc.collect()
                         torch.cuda.empty_cache()
                         if len(decoded_responses[ablation][reps_type][topk]) == 0:
-                            patch_logits = post_patch_logit_scores
                             decoded_responses[ablation][reps_type][topk] = decoded
                         else:
-                            patch_logits = torch.cat([patch_logits, post_patch_logit_scores], dim=-1)
                             decoded_responses[ablation][reps_type][topk] += decoded
                         batch_handler.update()
                     
                     os.makedirs(f"{config.get_output_prefix()}/eval_test/", exist_ok=True)
-                    # torch.save(patch_logits, f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_patch_logits.pt")
-                    # torch.save(pre_patch_logits, f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_pre_patch_logits.pt")
-                    # plot_violin_comparison(patch_logits, topk, reps_type, config, logit_metric, ablation)
                     save_prompt_responses(decoded_responses[ablation][reps_type][topk], gen_file)
-
-    # del model_handler.model
-    # del model_handler.tokenizer
-    # gc.collect()
-    # torch.cuda.empty_cache()
-    # call_judge(model_handler, config, data_handler, ablations, reps_types, topk_vals)
-
-    print("Evaluation complete.")
-
-def run_eval_extant(config, data_handler, model_handler, batch_handler, which_patch='heads'):
-    print('Starting MMLU eval')
-
-    if not config.args.patch_algo == 'random':
-        logits = load_logits(config, data_handler, which_patch, model_handler)
-    else:
-        logits = None
-
-    patching_reps = load_patching_reps(data_handler, model_handler)
-    ablations = ['steer']
-    reps_types = ['random' if config.args.patch_algo == 'random' else 'targeted']
-
-    topk_vals = [0, 1, 0.5, 0.03, 0.05, 0.01, 0.02, 0.04, 0.06, 0.07, 0.08, 0.09, 0.1]
-    if config.args.patch_algo == 'probes':
-        logit_metric = 'probes' 
-    elif config.args.patch_algo == 'random':
-        logit_metric = 'random'
-    else:
-        logit_metric = 'numerator_1'
-
-    decoded_responses = {}
-    old_batch_size = config.args.batch_size
-    for ablation in tqdm(ablations, desc='ablations'):
-        decoded_responses[ablation] = {}
-        for reps_type in tqdm(reps_types, desc='Reps Types'):
-            decoded_responses[ablation][reps_type] = {}
-            acc_file = f"{config.get_output_prefix()}/eval_test/0_extant_mmlu_{config.args.N}_{reps_type}_{ablation}.json"
-            if os.path.exists(acc_file):
-                print(f"Skipping generation as all relevant files exist.")
-                continue
-            for topk in tqdm(topk_vals, desc='TopK Values'):
-                num_equal = 0
-                print(f"Eval [[LOGITS]] → Ablation: {ablation}, Reps: {reps_type}, TopK: {topk}, N: {config.args.N}, algo: {config.args.patch_algo}, task: {config.args.source} -> {config.args.base}")
-                decoded_responses[ablation][reps_type][topk] = []
-                if not os.path.exists(f"{config.get_output_prefix()}/eval_test/{logit_metric}_{reps_type}_{topk}.csv"):
-                    topk_df = save_top_k(reps_type, config, model_handler.model, topk, logits, logit_metric)
-                else:
-                    topk_df = pd.read_csv(f"./normalized-results/{config.args.model_id.split('/')[-1]}/from_{config.args.source}_to_{config.args.base}/{config.args.patch_algo}/eval_test/{logit_metric}_{reps_type}_{topk}.csv")
-
-                if 'OLMo' in config.args.model_id:
-                    config.args.batch_size = 16
-                else:
-                    config.args.batch_size = 32
-                batch_handler = BatchHandler(config, data_handler)
-                print('MMLU LEN ', data_handler.mmlu_prompts['input_ids'].shape[0])
-                for idx in tqdm(range(0, data_handler.mmlu_prompts['input_ids'].shape[0], config.args.batch_size)):
-                    top_tokens = patch_heads_and_get_logit(
-                        model_handler.model,
-                        model_handler.dim,
-                        patching_reps[ablation]['desired'],
-                        topk_df,
-                        batch_handler.mmlu_toks,
-                        None,
-                        config.args.N,
-                        ablation,
-                        None,
-                        top_tokens=True
-                    )
-                    top_decoded = model_handler.tokenizer.batch_decode(top_tokens, skip_special_tokens=True)
-                    print('top decoded ', top_decoded)
-                    print('answers ', batch_handler.mmlu_answers)
-                    num_equal += sum(d == a for d, a in zip(top_decoded, batch_handler.mmlu_answers))
-                    torch.cuda.empty_cache()
-                    gc.collect()
-                    batch_handler.update()
-                with open(acc_file, 'a') as f:
-                    f.write(f"{{'num-correct': {num_equal}, 'topk': {topk}, 'N': {config.args.N}}}\n")
-    config.args.batch_size = old_batch_size
-    print('Finished MMLU eval')
-
-def run_eval_mean(config, data_handler, model_handler, batch_handler, patching_utils, which_patch='heads'):
-    global best_algorithms
-    if config.args.patch_algo != best_algorithms.get(config.args.model_id.split('/')[-1], {}).get(f"from_{config.args.source}_to_{config.args.base}", config.args.patch_algo):
-        print(f"The chosen patching algorithm {config.args.patch_algo} is not the best known for the model {config.args.model_id.split('/')[-1]} and task from {config.args.source} to {config.args.base}. The best known algorithm is {best_algorithms.get(config.args.model_id.split('/')[-1], {}).get(f'from_{config.args.source}_to_{config.args.base}', 'N/A')}. Returning")
-        return
-    
-    model = model_handler.model
-
-    with open(f"{config.get_output_prefix().replace('normalized-results', 'runs')}/eval/gen_best_config_summary.json", 'r') as f:
-        decoded_responses = json.load(f)
-    try:
-        decoded_responses = [d for d in decoded_responses if d["model"] == config.args.model_id.split('/')[-1]][0]
-    except Exception as e:
-        print(decoded_responses)
-        raise ValueError(f"No responses found for model {config.args.model_id.split('/')[-1]} in the provided JSON file.")
-
-    decoded_responses = decoded_responses["best"][f"from_{config.args.source}_to_{config.args.base}"][f"{config.args.patch_algo}"]
-    topk_vals = [decoded_responses["topk"]]
-    config.args.N = decoded_responses["sf"]
-    if not config.args.patch_algo == 'random':
-        if os.path.exists(f"{config.get_output_prefix()}/eval_test/numerator_1_{which_patch}.pt"):
-            logits = torch.load(f"{config.get_output_prefix()}/eval_test/numerator_1_{which_patch}.pt")
-        else:
-            logits = load_logits(config, data_handler, which_patch, model_handler)
-    else:
-        logits = None
-    patching_reps = load_patching_reps(data_handler, model_handler)
-    ablations = ['mean']
-    reps_types = ['random'] if config.args.patch_algo == 'random' else ['targeted']
-
-    # topk_vals = [0.03, 0.05, 0.01, 0.02, 0.04, 0.06, 0.07, 0.08, 0.09, 0.1, 0.5, 1]
-    
-    if config.args.patch_algo == 'probes':
-        logit_metric = 'probes'
-    elif config.args.patch_algo == 'random':
-        logit_metric = 'random'
-    else:
-        logit_metric = 'numerator_1'
-
-    decoded_responses = {}
-    print('Starting for loop')
-    for ablation in tqdm(ablations, desc="Ablations"):
-        decoded_responses[ablation] = {}
-        for reps_type in tqdm(reps_types, desc="Reps Types"):
-            decoded_responses[ablation][reps_type] = {}
-            for topk in tqdm(topk_vals, desc="TopK Values"):
-                if os.path.exists(f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_patch_logits.pt") and os.path.exists(f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_pre_patch_logits.pt"):
-                    print(f"Skipping evaluation for {ablation}, {reps_type}, {topk} {config.args.N} as patch logits already exist.")
-                    continue
-                patch_logits = None
-                pre_patch_logits = None
-                decoded_responses[ablation][reps_type][topk] = []
-                gen_file = f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_gen.txt"
-                print(f"Eval [[LOGITS]] → Ablation: {ablation}, Reps: {reps_type}, TopK: {topk}, N: {config.args.N}, algo: {config.args.patch_algo}, task: {config.args.source} -> {config.args.base}")
-
-                if os.path.exists(gen_file) and os.path.exists(gen_file.replace('.txt', '.json')) and os.path.exists(f"{config.get_output_prefix()}/eval_test/{logit_metric}_{reps_type}_{topk}.csv") and os.path.exists(f"{config.get_output_prefix()}/eval_test/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_gen_accuracy.json"):
-                    print(f"Skipping generation as all relevant files exist.")
-                    continue
-                if not os.path.exists(f"{config.get_output_prefix()}/eval_test/{logit_metric}_{reps_type}_{topk}.csv"):
-                    topk_df = save_top_k(reps_type, config, model, topk, logits, logit_metric)
-                else:
-                    topk_df = pd.read_csv(f"./normalized-results/{config.args.model_id.split('/')[-1]}/from_{config.args.source}_to_{config.args.base}/{config.args.patch_algo}/eval_test/{logit_metric}_{reps_type}_{topk}.csv")
-
-                batch_handler = BatchHandler(config, data_handler)
-                len_gen_qs = select_gen_qs_toks(config, data_handler)['input_ids'].shape[0]
-                for idx in tqdm(range(0, min(data_handler.LEN, len_gen_qs), config.args.batch_size)):
-                    gen_qs_toks = select_gen_qs_toks(config, batch_handler)
-                    # Compute logit scores after edit
-                    # post_patch_logit_scores = compute_logit_scores(
-                    #     batch_handler,
-                    #     topk_df,
-                    #     patching_reps[ablation],
-                    #     model_handler,
-                    #     ablation,
-                    #     patching_utils.get_response_logits,
-                    #     config.args.N
-                    # )
-                    # pre_patch_logit_scores = get_logits_before_patch(
-                    #     model,
-                    #     batch_handler,
-                    #     patching_utils.get_response_logits)
-                    
-                    # Compute generations after edit
-                    edited_outputs = generate_with_patches(model, gen_qs_toks, patching_reps[ablation], batch_handler.response_start_positions['base']['desired'], topk_df, config.args.N, ablation, model_handler.dim, max_new_tokens=128)
-                    with model.generate(gen_qs_toks, do_sample=False, max_new_tokens=128) as _:
-                        original_outputs = model.generator.output.save()
-                    decoded = decode_responses(model, gen_qs_toks, original_outputs, edited_outputs, config.args.base)
-                    gc.collect()
-                    torch.cuda.empty_cache()
-                    if len(decoded_responses[ablation][reps_type][topk]) == 0:
-                        # patch_logits = post_patch_logit_scores
-                        # pre_patch_logits = pre_patch_logit_scores
-                        decoded_responses[ablation][reps_type][topk] = decoded
-                    else:
-                        # patch_logits = torch.cat([patch_logits, post_patch_logit_scores], dim=-1)
-                        # pre_patch_logits = torch.cat([pre_patch_logits, pre_patch_logit_scores], dim=-1)
-                        decoded_responses[ablation][reps_type][topk] += decoded
-                    batch_handler.update()
-                
-                os.makedirs(f"{config.get_output_prefix()}/eval_test/", exist_ok=True)
-                # torch.save(patch_logits, f"{config.get_output_prefix()}/eval_test/mean_{config.args.N}_{reps_type}_{ablation}_topk_{topk}_patch_logits.pt")
-                # torch.save(pre_patch_logits, f"{config.get_output_prefix()}/eval_test/mean_{config.args.N}_{reps_type}_{ablation}_topk_{topk}_pre_patch_logits.pt")
-                # plot_violin_comparison(patch_logits, topk, reps_type, config, logit_metric, ablation)
-                save_prompt_responses(decoded_responses[ablation][reps_type][topk], gen_file)
-                break
-
-    del model_handler.model
-    del model_handler.tokenizer
-    gc.collect()
-    torch.cuda.empty_cache()
-    call_judge(model_handler, config, data_handler, ablations, reps_types, topk_vals, gen_file=gen_file.replace('.txt', '.json'))
-
     print("Evaluation complete.")
 
 def run_eval_pyreft(config, data_handler, model_handler, batch_handler):
-    global best_algorithms
-    # if config.args.patch_algo != best_algorithms.get(config.args.model_id.split('/')[-1], {}).get(f"from_{config.args.source}_to_{config.args.base}", config.args.patch_algo):
-    #     print(f"The chosen patching algorithm {config.args.patch_algo} is not the best known for the model {config.args.model_id.split('/')[-1]} and task from {config.args.source} to {config.args.base}. The best known algorithm is {best_algorithms.get(config.args.model_id.split('/')[-1], {}).get(f'from_{config.args.source}_to_{config.args.base}', 'N/A')}. Returning")
-    #     return
-    # with open(f"{config.get_output_prefix().replace('normalized-results', 'runs')}/eval/gen_best_config_summary.json", 'r') as f:
-    #     decoded_responses = json.load(f)
-    # try:
-    #     decoded_responses = [d for d in decoded_responses if d["model"] == config.args.model_id.split('/')[-1]][0]
-    # except Exception as e:
-    #     print(decoded_responses)
-    #     raise ValueError(f"No responses found for model {config.args.model_id.split('/')[-1]} in the provided JSON file.")
-
-    # decoded_responses = decoded_responses["best"][f"from_{config.args.source}_to_{config.args.base}"][f"{config.args.patch_algo}"]
-    # topk_vals = [decoded_responses["topk"]]
-    topk_vals = [0.03, 0.05, 0.01, 0.02, 0.04, 0.06, 0.07, 0.08, 0.09, 0.1, 0.5, 1]
+    topk_vals = [0.01, 0.03, 0.05, 0.07, 0.09, 0.1, 0.5, 1.0]
     del model_handler.model
     torch.cuda.empty_cache()
     gc.collect()
@@ -464,7 +205,6 @@ def run_eval_pyreft(config, data_handler, model_handler, batch_handler):
             gen_file = f"{config.get_output_prefix()}/eval/{N}_{reps}_pyreft_topk_{topk}_gen.txt"
             print('Entering generation loop for PyReFT...')
             if os.path.exists(gen_file) and os.path.exists(gen_file.replace('.txt', '.json')):
-            # and os.path.exists(f"{config.get_output_prefix()}/eval/{N}_{reps}_pyreft_topk_{topk}_gen_accuracy.json"):
                 print(f"Skipping generation as all relevant files exist.")
                 continue
             else:
@@ -478,21 +218,16 @@ def run_eval_pyreft(config, data_handler, model_handler, batch_handler):
         reft_model.set_device(config.args.device)
         reft_model.print_trainable_parameters()
         data = data_handler.pyreft_prompts
-        # print('pyreft_prompts ', data[:5])
         cf_data = {
             'input_ids': data_handler.pyreft_toks['input_ids'].clone(),
             'attention_mask': data_handler.pyreft_toks['attention_mask'].clone()
         }
-
-        # print(cf_data['input_ids'][0], cf_data['attention_mask'][0],)
-        # print('pyreft_prompts ', model_handler.tokenizer.batch_decode(cf_data['input_ids'][:5], skip_special_tokens=True))
         labels = cf_data['input_ids'].clone()
         for i in range(labels.shape[0]):
             start_pos = data_handler.response_start_positions['pyreft'][i]
             labels[i, :start_pos] = -100  # Ignore tokens before the response start position
         labels[cf_data['attention_mask'] == 0] = -100
         reft_model = reft_train(topk_df, reft_model, cf_data, labels, batch_size=10, lr=4e-3, num_epochs=100, device=config.args.device, display_bar=True)
-        # reft_model = train_params['model']
         for N in range(1, 11):
             batch_handler = BatchHandler(config, data_handler)
             decoded_responses = {
@@ -505,7 +240,6 @@ def run_eval_pyreft(config, data_handler, model_handler, batch_handler):
             gen_file = f"{config.get_output_prefix()}/eval/{N}_{reps}_pyreft_topk_{topk}_gen.txt"
             print('Entering generation loop for PyReFT...')
             if os.path.exists(gen_file) and os.path.exists(gen_file.replace('.txt', '.json')):
-            # and os.path.exists(f"{config.get_output_prefix()}/eval/{N}_{reps}_pyreft_topk_{topk}_gen_accuracy.json"):
                 print(f"Skipping generation as all relevant files exist.")
                 continue
             for idx in tqdm(range(0, min(len_gen_qs, data_handler.LEN), config.args.batch_size)):
@@ -611,118 +345,3 @@ def run_eval_transfer(config, data_handler, model_handler, batch_handler, patchi
     del model_handler.tokenizer
     gc.collect()
     torch.cuda.empty_cache()
-    call_judge(model_handler, config, data_handler, [ablation], [reps_type], [topk], gen_file=gen_file.replace('.txt', '.json'))
-  
-def get_head_representations(config, data_handler, model_handler, batch_handler):
-    # set_seed()
-    print("Starting evaluation...")
-
-    model = model_handler.model
-    patching_reps = load_patching_reps(data_handler, model_handler, mean=False)
-    ablations = ['steer']
-    reps_types = ['random'] if config.args.patch_algo == 'random' else ['targeted']
-
-    topk_vals = [1]
-    if config.args.patch_algo == 'probes':
-        logit_metric = 'probes'
-    elif config.args.patch_algo == 'random':
-        logit_metric = 'random'
-    else:
-        logit_metric = 'numerator_1'
-
-    decoded_responses = {}
-    pre_patch_head_representations_base = {}
-    patch_head_representations_steer = {}
-    pre_patch_head_representations_source = {}
-    for ablation in tqdm(ablations, desc="Ablations"):
-        decoded_responses[ablation] = {}
-        for reps_type in tqdm(reps_types, desc="Reps Types"):
-            decoded_responses[ablation][reps_type] = {}
-            for topk in tqdm(topk_vals, desc="TopK Values"):
-                decoded_responses[ablation][reps_type][topk] = []
-                print(f"Eval [[head representations]] → Ablation: {ablation}, Reps: {reps_type}, TopK: {topk}, N: {config.args.N}, algo: {config.args.patch_algo}, task: {config.args.source} -> {config.args.base}")
-                batch_handler = BatchHandler(config, data_handler)
-                for idx in tqdm(range(0, data_handler.LEN, config.args.batch_size)):
-                    # Compute logit scores after edit
-                    for key in ['desired', 'undesired']:
-                        if not key in pre_patch_head_representations_base:
-                            pre_patch_head_representations_base[key] = get_heads(
-                                model_handler.model,
-                                model_handler.dim,
-                                patching_reps[ablation],
-                                batch_handler.base_qs_toks[key],
-                                config.args.N,
-                                ablation,
-                                patch=False
-                            )
-                            patch_head_representations_steer[key] = patching_reps[ablation][key].clone().view(patching_reps[ablation][key].shape[0], patching_reps[ablation][key].shape[1], patching_reps[ablation][key].shape[2], model_handler.num_heads, model_handler.dim).permute(0, 1, 3, 2, 4)
-                            pre_patch_head_representations_source[key] = get_heads(
-                                model_handler.model,
-                                model_handler.dim,
-                                patching_reps[ablation],
-                                batch_handler.source_qs_toks[key],
-                                config.args.N,
-                                ablation,
-                                patch=False
-                            )
-                            print(" 1 ", pre_patch_head_representations_base[key].shape, patch_head_representations_steer[key].shape, pre_patch_head_representations_source[key].shape)
-                        else:
-                            pre_patch_head_representations_base[key] = torch.cat([
-                                pre_patch_head_representations_base[key],
-                                get_heads(
-                                    model_handler.model,
-                                    model_handler.dim,
-                                    patching_reps[ablation],
-                                    batch_handler.base_qs_toks[key],
-                                    config.args.N,
-                                    ablation,
-                                    patch=False
-                                )
-                            ], dim=1)
-                            pre_patch_head_representations_source[key] = torch.cat([
-                                pre_patch_head_representations_source[key],
-                                get_heads(
-                                    model_handler.model,
-                                    model_handler.dim,
-                                    patching_reps[ablation],
-                                    batch_handler.source_qs_toks[key],
-                                    config.args.N,
-                                    ablation,
-                                    patch=False
-                                )
-                            ], dim=1)
-                            print(" 2 ", pre_patch_head_representations_base[key].shape, patch_head_representations_steer[key].shape, pre_patch_head_representations_source[key].shape)
-                    batch_handler.update()
-                print("FINAL ", pre_patch_head_representations_base['desired'].shape, patch_head_representations_steer['desired'].shape, pre_patch_head_representations_source['desired'].shape)
-                os.makedirs(f"{config.get_output_prefix()}/heads/", exist_ok=True)
-                torch.save(pre_patch_head_representations_base, f"{config.get_output_prefix()}/heads/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_pre_patch.pt")
-                torch.save(patch_head_representations_steer, f"{config.get_output_prefix()}/heads/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_patched_steer.pt")
-                torch.save(pre_patch_head_representations_source, f"{config.get_output_prefix()}/heads/{config.args.N}_{reps_type}_{ablation}_topk_{topk}_patched_source.pt")
-
-    del model_handler.model
-    del model_handler.tokenizer
-    gc.collect()
-    torch.cuda.empty_cache()
-
-def run_eval_prompting(config, data_handler, model_handler, batch_handler):
-    model = model_handler.model
-    decoded_responses = {
-        'prompting': {
-            'prompting': {
-                '0': []
-            }
-        }
-    }
-    batch_handler = BatchHandler(config, data_handler)
-    for idx in tqdm(range(0, data_handler.LEN, config.args.batch_size)):
-        edit_gen_qs_toks = batch_handler.prompting_toks
-        gen_qs_toks = batch_handler.base_qs_toks['desired']
-        with model.generate(edit_gen_qs_toks, do_sample=False, max_new_tokens=256) as _:
-            edited_outputs = model.generator.output.save()
-        with model.generate(gen_qs_toks, do_sample=False, max_new_tokens=256) as _:
-            original_outputs = model.generator.output.save()
-        decoded = decode_responses(model, gen_qs_toks, original_outputs, edited_outputs, config.args.base)
-        decoded_responses['prompting']['prompting']['0'] += decoded
-        batch_handler.update()
-    save_prompt_responses(decoded_responses['prompting']['prompting']['0'], f"{config.get_output_prefix()}/eval/0_prompting_prompting_topk_0_gen.txt")
-    call_judge(model_handler, config, data_handler, ['prompting'], ['prompting'], ['0'])
