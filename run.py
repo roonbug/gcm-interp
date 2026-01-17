@@ -42,19 +42,10 @@ def main():
         batch_handler = BatchHandler(config, data_handler, 0, min(batch_size, data_handler.LEN))
         patching = Patching(model_handler, batch_handler, config)
         patching_utils = PatchingUtils(patching)
-        # if config.args.eval_mean:
-        #     run_eval_mean(config, data_handler, model_handler, batch_handler, patching_utils)
         if config.args.pyreft:
             run_eval_pyreft(config, data_handler, model_handler, batch_handler)
         elif config.args.steering:
             run_eval(config, data_handler, model_handler, batch_handler, patching_utils, 'heads')
-        elif config.args.attribution:
-            # config.args.batch_size = max(x for x in range(1, 0, -1) if data_handler.LEN % x != 1)
-            config.args.batch_size = 1
-            run_eval_attributions(config, data_handler, model_handler, batch_handler)
-        elif config.args.prompting:
-            config.args.batch_size = max(x for x in range(4, 0, -1) if data_handler.LEN % x != 1)
-            run_eval_prompting(config, data_handler, model_handler, batch_handler)
         elif config.args.eval_transfer:
             data_handler.LEN = min(data_handler.LEN, 100)
             run_eval_transfer(config, data_handler, model_handler, batch_handler, patching_utils)

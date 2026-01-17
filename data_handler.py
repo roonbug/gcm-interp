@@ -162,16 +162,6 @@ class DataHandler:
             },
             "pyreft": self.get_resp_start_pos(self.pyreft_toks, self.model_handler.marker, self.model_handler.tokenizer)
         }
-    
-    def filter_jsons(self, jsons):
-        assert len(jsons['base_desired']) == len(jsons['base_undesired'])
-        assert len(jsons['source_desired']) == len(jsons['source_undesired'])
-        
-        ids = [p['id'] for p in jsons['base_desired']]
-        jsons['source_desired'] = [p for p in jsons['source_desired'] if p['id'] in ids]
-        jsons['source_undesired'] = [p for p in jsons['source_undesired'] if p['id'] in ids]
-
-        return jsons
 
     def get_templated_prompts(self, prompts, _base_completion=None, only_q=False, add_generation_prompt=False):
         if only_q:
@@ -179,13 +169,10 @@ class DataHandler:
             if self.no_generation_prompt_for_eval_transfer:
                 print('Explicitly setting add_generation_prompt to False for eval_transfer dataset.')
                 add_generation_prompt = False
-            print(prompts[0]['prompt'], [p['role'] == 'assistant' for p in prompts[0]['prompt']])
             assistant_exists = any([p['role'] == 'assistant' for p in prompts[0]['prompt']])
             if assistant_exists:
-                print('assistant exists in prompt...')
                 prompt_lengths = [len(p['prompt']) - 1 for p in prompts]
             else:
-                print('No assistant exists in prompt...')
                 prompt_lengths = [max(len(p['prompt']), 1) for p in prompts]
             return [
                 self.model_handler.tokenizer.apply_chat_template(
@@ -209,7 +196,6 @@ class DataHandler:
                 ) for p in prompts]
         
     def get_resp_start_pos(self, tokens, marker, tokenizer):
-        print_now = True
         response_start_positions = []
         for _, tok in tqdm(enumerate(tokens['input_ids']), desc="Finding response start positions..."):
             tok = tok.to(self.device)
