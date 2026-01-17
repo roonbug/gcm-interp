@@ -46,7 +46,7 @@ class Config:
         parser.add_argument('-eval_model', '--eval_model', action='store_true', help='Evaluate the model')
         parser.add_argument('-eval_test', '--eval_test', action='store_true', help='Evaluate the model on test set')
         parser.add_argument('-eval_train', '--eval_train', action='store_true', help='Evaluate the model on train set')
-        parser.add_argument('-eval_test_dataset', '--eval_test_dataset', type=str, help='Path to the test dataset for evaluation')
+        parser.add_argument('-eval_transfer', '--eval_transfer', type=str, help='Path to the test dataset for evaluation')
         parser.add_argument('--steering', action='store_true', help='Steering Eval mode')
         parser.add_argument('--pyreft', action='store_true', help='Use PyReFT Eval Mode')
         parser.add_argument('-attribution', '--attribution', action='store_true', help='get attn head attributions')

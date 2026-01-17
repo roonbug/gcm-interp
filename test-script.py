@@ -57,7 +57,7 @@ for model_id in run_dict.keys():
         pyreft: Optional[bool] = False
         vllm: Optional[bool] = False
         aidevi: Optional[bool] = False
-        eval_test_dataset: Optional[bool] = False
+        eval_transfer: Optional[bool] = False
         max_new_tokens: int = 256
         judge_answer_match: Optional[bool] = False
         eval_train: bool = False

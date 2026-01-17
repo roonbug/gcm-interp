@@ -21,8 +21,7 @@ class DataHandler:
             'source_desired': f"{self.config.args.data_path}/{self.config.args.source}-desired-all.jsonl",
             'source_undesired': f"{self.config.args.data_path}/{self.config.args.source}-undesired-all.jsonl",
             'base_test': f"{self.config.args.data_path}/{self.config.args.base}-test.jsonl" if self.config.args.eval_test else None,
-            'eval_test': f"./data/eval/from_{self.config.args.source}_to_{self.config.args.base}/{self.config.args.eval_test_dataset}.jsonl" if self.config.args.eval_test_dataset else None,
-            'mmlu': f"./data/mmlu.csv"
+            'eval_test': f"./data/eval/from_{self.config.args.source}_to_{self.config.args.base}/{self.config.args.eval_transfer}.jsonl" if self.config.args.eval_transfer else None,
         }
 
         jsons = {
@@ -32,7 +31,7 @@ class DataHandler:
             'source_desired': self.load_from_jsonl(file_paths['source_desired']),
             'source_undesired': self.load_from_jsonl(file_paths['source_undesired']),
             'base_test': self.load_from_jsonl(file_paths['base_test']) if self.config.args.eval_test else None,
-            'eval_test': self.load_from_jsonl(file_paths['eval_test']) if self.config.args.eval_test_dataset else None
+            'eval_test': self.load_from_jsonl(file_paths['eval_test']) if self.config.args.eval_transfer else None
         }
 
         mmlu = pd.read_csv(file_paths['mmlu'])
@@ -59,26 +58,15 @@ class DataHandler:
             'desired': self.get_templated_prompts(jsons['source_desired'], only_q=True, add_generation_prompt=True),
             'undesired': self.get_templated_prompts(jsons['source_undesired'], only_q=True, add_generation_prompt=True)
         }
-
-        if 'len' in jsons['base_desired'][0]:
-            self.max_len = max(jsons['base_desired'][0]['len'], jsons['base_undesired'][0]['len'], jsons['source_desired'][0]['len'], jsons['source_undesired'][0]['len'])
-        else:
-            all_templated_prompts = base['desired'] + base['undesired'] + source_qs['desired'] + source_qs['undesired']
-            all_tokenized_prompts = self.tokenize_prompts(all_templated_prompts, max_length=None)
-            self.max_len = all_tokenized_prompts['input_ids'].shape[1]
+        
+        all_templated_prompts = base['desired'] + base['undesired'] + source_qs['desired'] + source_qs['undesired']
+        all_tokenized_prompts = self.tokenize_prompts(all_templated_prompts, max_length=None)
+        self.max_len = all_tokenized_prompts['input_ids'].shape[1]
 
         if self.config.args.eval_model:
             orig_template = self.model_handler.tokenizer.chat_template
-            # model_handler.model.tokenizer.chat_template = 
-            # print(mmlu['prompt'].tolist()[:5])
-            self.mmlu_prompts = self.tokenize_prompts(mmlu['prompt'].tolist(), max_length=self.max_len)
-            self.mmlu_answers = mmlu['answer_key'].tolist()
-            if self.config.args.judge_answer_match:
-                self.no_generation_prompt_for_eval_test = True
-                self.judge_qs = self.load_from_jsonl(f"./data/eval/from_{self.config.args.source}_to_{self.config.args.base}/{self.config.args.eval_test_dataset}-judge-qs.jsonl")
-            else:
-                self.judge_qs = self.load_from_jsonl(f"{self.config.args.data_path}/judge-qs.jsonl")
-            if self.config.args.eval_test_dataset:
+            self.judge_qs = self.load_from_jsonl(f"{self.config.args.data_path}/judge-qs.jsonl")
+            if self.config.args.eval_transfer:
                 # Removing the system prompt for eval_test dataset
                 if config.args.model_id.split('/')[1] == 'Qwen1.5-14B-Chat':
                     self.model_handler.tokenizer.chat_template = "{% for message in messages %}\n" \
@@ -105,7 +93,6 @@ class DataHandler:
                     "{{ '\\n<|assistant|>\\n' }}\n" \
                     "{%- endif %}"
 
-                # Step 1: Get all starting indices where item_index % 5 == 0
                 start_indices = [i for i in range(len(jsons['eval_test'])) if i % 5 == 0]
 
                 # Step 2: Randomly sample 40 starting indices
@@ -118,23 +105,17 @@ class DataHandler:
                     random_indices.extend(block)
                 # random_indices = list(range(len(jsons['eval_test'])))
                 print('###### Making eval_test dataset templated prompts...')
-                self.eval_test_dataset = {
+                self.eval_transfer = {
                     "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_test'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=None),
                     "answers": [p['base']['correct_answer'] for p in jsons['eval_test']] if self.config.args.judge_answer_match else None,
                 }
-                if self.eval_test_dataset['queries']['input_ids'].shape[1] < self.max_len:
-                    # print('######### OLD MAX LEN ', self.max_len)
-                    # print('######### NEW MAX LEN ', self.max_len)
-                    self.eval_test_dataset = {
+                if self.eval_transfer['queries']['input_ids'].shape[1] < self.max_len:
+                    self.eval_transfer = {
                         "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_test'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=self.max_len),
                         "answers": [p['base']['correct_answer'] for p in jsons['eval_test']] if self.config.args.judge_answer_match else None,
                     }
                 else:
-                    # print('######### OLD MAX LEN ', self.max_len)
-                    self.max_len = self.eval_test_dataset['queries']['input_ids'].shape[1]
-                    # print('######### NEW MAX LEN ', self.max_len)
-                # print('########## EVAL TEST DATASET EXAMPLE ########### ')
-                # print(self.model_handler.tokenizer.convert_ids_to_tokens(self.eval_test_dataset['queries']['input_ids'][0]))
+                    self.max_len = self.eval_transfer['queries']['input_ids'].shape[1]
                 
                 self.no_generation_prompt_for_eval_test = False
                 self.model_handler.tokenizer.chat_template = orig_template
@@ -188,6 +169,7 @@ class DataHandler:
             },
             "pyreft": self.get_resp_start_pos(self.pyreft_toks, self.model_handler.marker, self.model_handler.tokenizer)
         }
+    
     def filter_jsons(self, jsons):
         assert len(jsons['base_desired']) == len(jsons['base_undesired'])
         assert len(jsons['source_desired']) == len(jsons['source_undesired'])

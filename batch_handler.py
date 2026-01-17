@@ -50,13 +50,13 @@ class BatchHandler:
 
             self.mmlu_answers = self.data_handler.mmlu_answers[self.start:self.stop]
 
-        if self.config.args.eval_test_dataset:
-            self.eval_test_dataset = {
+        if self.config.args.eval_transfer:
+            self.eval_transfer = {
                 "queries": {
-                    'input_ids': self.data_handler.eval_test_dataset["queries"]['input_ids'][self.start:self.stop],
-                    'attention_mask': self.data_handler.eval_test_dataset["queries"]['attention_mask'][self.start:self.stop]
+                    'input_ids': self.data_handler.eval_transfer["queries"]['input_ids'][self.start:self.stop],
+                    'attention_mask': self.data_handler.eval_transfer["queries"]['attention_mask'][self.start:self.stop]
                 },
-                "answers": self.data_handler.eval_test_dataset["answers"][self.start:self.stop] if self.data_handler.eval_test_dataset["answers"] is not None else None
+                "answers": self.data_handler.eval_transfer["answers"][self.start:self.stop] if self.data_handler.eval_transfer["answers"] is not None else None
             }
 
     def update(self, start=None, stop=None):
@@ -101,12 +101,12 @@ class BatchHandler:
                 "attention_mask": self.data_handler.mmlu_prompts["attention_mask"][self.start:self.stop]
             }
             self.mmlu_answers = self.data_handler.mmlu_answers[self.start:self.stop]
-        if self.config.args.eval_test_dataset:
-            self.eval_test_dataset = {
+        if self.config.args.eval_transfer:
+            self.eval_transfer = {
                 "queries": {
-                    'input_ids': self.data_handler.eval_test_dataset["queries"]['input_ids'][self.start:self.stop],
-                    'attention_mask': self.data_handler.eval_test_dataset["queries"]['attention_mask'][self.start:self.stop]
+                    'input_ids': self.data_handler.eval_transfer["queries"]['input_ids'][self.start:self.stop],
+                    'attention_mask': self.data_handler.eval_transfer["queries"]['attention_mask'][self.start:self.stop]
                 },
-                "answers": self.data_handler.eval_test_dataset["answers"][self.start:self.stop] if self.data_handler.eval_test_dataset["answers"] is not None else None
+                "answers": self.data_handler.eval_transfer["answers"][self.start:self.stop] if self.data_handler.eval_transfer["answers"] is not None else None
             }
         

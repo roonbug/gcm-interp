@@ -94,7 +94,7 @@ def call_judge(model_handler, config, data_handler, ablations, reps_types, topk_
                     if config.args.judge_answer_match:
                         acc, responses = compute_judge_accuracy_test(judge_model, tokenizer, decoded_responses, data_handler.judge_qs, config.args.base, config.args.source)
                         save_judge_accuracy(acc, acc_path)
-                        save_judge_accuracy(responses, f"{config.get_output_prefix()}/eval_test/{config.args.N}_{config.args.eval_test_dataset}_{reps_type}_{ablation}_topk_{topk}_gen_accuracy_responses.json")
+                        save_judge_accuracy(responses, f"{config.get_output_prefix()}/eval_test/{config.args.N}_{config.args.eval_transfer}_{reps_type}_{ablation}_topk_{topk}_gen_accuracy_responses.json")
                     else:
                         acc, responses = compute_judge_accuracy(judge_model, tokenizer, decoded_responses, data_handler.judge_qs, config.args.base, config.args.source)
                         print('acc ', acc)
@@ -650,7 +650,7 @@ def run_eval_test_data(config, data_handler, model_handler, batch_handler, patch
     batch_handler = BatchHandler(config, data_handler)
     print('Best method: ', config.args.patch_algo, ' N: ', config.args.N, ' topk: ', topk, ' test accuracy ', )
     for idx in tqdm(range(0, data_handler.LEN, config.args.batch_size), desc="Processing samples"):
-        gen_file = f"{config.get_output_prefix()}/eval_test/{config.args.N}_{config.args.eval_test_dataset}_{reps_type}_{ablation}_topk_{topk}_gen_{config.args.seed}.txt"
+        gen_file = f"{config.get_output_prefix()}/eval_test/{config.args.N}_{config.args.eval_transfer}_{reps_type}_{ablation}_topk_{topk}_gen_{config.args.seed}.txt"
         if os.path.exists(gen_file.replace('.txt', '_accuracy_responses.json')):
             print(f"Skipping generation as all relevant files exist.")
             return
@@ -658,8 +658,8 @@ def run_eval_test_data(config, data_handler, model_handler, batch_handler, patch
         edited_outputs = generate_with_patches(model, gen_qs_toks, patching_reps[ablation], topk_df, config.args.N, ablation, model_handler.dim, max_new_tokens=256, normalize=False)
         with model.generate(gen_qs_toks, do_sample=False, max_new_tokens=256) as _:
             original_outputs = model.generator.output.save()
-        if config.args.eval_test_dataset:
-            answers = batch_handler.eval_test_dataset['answers']
+        if config.args.eval_transfer:
+            answers = batch_handler.eval_transfer['answers']
         else:
             answers = None
         decoded = decode_responses(model, gen_qs_toks, original_outputs, edited_outputs, config.args.base, answers=answers)

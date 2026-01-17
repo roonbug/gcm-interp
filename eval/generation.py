@@ -10,9 +10,9 @@ def select_gen_qs_toks(config, batch_handler):
     elif config.args.eval_test:
         print("Evaluating on test set. ", batch_handler.base_qs_toks['test']['input_ids'].shape[0])
         return batch_handler.base_qs_toks['test']
-    elif config.args.eval_test_dataset:
+    elif config.args.eval_transfer:
         print("Evaluating on eval_test dataset.")
-        return batch_handler.eval_test_dataset['queries']
+        return batch_handler.eval_transfer['queries']
     else:
         raise ValueError("Either eval_train or eval_test must be True.")
 def generate_with_patches(model, gen_toks, patch_activations, topk_df, N, ablation_type, DIM, max_new_tokens=256, normalize=False):

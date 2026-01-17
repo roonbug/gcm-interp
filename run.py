@@ -55,7 +55,7 @@ def main():
         elif config.args.prompting:
             config.args.batch_size = max(x for x in range(4, 0, -1) if data_handler.LEN % x != 1)
             run_eval_prompting(config, data_handler, model_handler, batch_handler)
-        elif config.args.eval_test_dataset:
+        elif config.args.eval_transfer:
             data_handler.LEN = min(data_handler.LEN, 100)
             run_eval_test_data(config, data_handler, model_handler, batch_handler, patching_utils)
         elif config.args.eval_extant:
