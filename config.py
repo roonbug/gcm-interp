@@ -13,14 +13,9 @@ class Config:
     def __init__(self):
         self.args = self.parse_arguments()
 
-        if self.args.source in ('harmful', 'harmless'):
-            self.args.data_path = f"./data/{self.args.model_id.split('/')[-1]}/logits/harmful"
-        elif self.args.source in ('hate', 'love'):
-            self.args.data_path = f"./data/{self.args.model_id.split('/')[-1]}/logits/hate"
-        elif self.args.source in ('verse', 'prose'):
-            self.args.data_path = f"./data/{self.args.model_id.split('/')[-1]}/logits/verse"
 
-        #ISHA: Add a condition here for jailbreak
+        self.args.data_path = f"./data/{self.args.model_id.split('/')[-1]}/logits/{self.args.source}"
+
         if self.args.patch_algo == None:
             self.args.patch_algo = 'atp'
         self.setup_environment(seed=self.args.seed)
