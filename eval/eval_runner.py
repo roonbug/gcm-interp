@@ -103,7 +103,7 @@ def run_eval(config, data_handler, model_handler, batch_handler, patching_utils,
     reps_types = ['random'] if config.args.patch_algo == 'random' else ['targeted']
 
     if topk_vals is None:
-        topk_vals = [0.03, 0.05, 0.01, 0.02, 0.04, 0.06, 0.07, 0.08, 0.09, 0.1, 0.5, 1]
+        topk_vals = [0.01, 0.03, 0.05, 0.07, 0.09, 0.1, 0.5, 1.0]
     if N is not None:
         config.args.N = N
     if config.args.patch_algo == 'probes':
@@ -137,7 +137,7 @@ def run_eval(config, data_handler, model_handler, batch_handler, patching_utils,
                 patching_utils.get_response_logits)], dim=-1)
         batch_handler.update()
     print('Starting for loop')
-    for N in range(1, 11):
+    for N in [1, 2, 4, 5, 6, 8, 10, 30, 50, 100]:
         config.args.N = N
         for ablation in tqdm(ablations, desc="Ablations"):
             decoded_responses[ablation] = {}
