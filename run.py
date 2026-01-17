@@ -57,10 +57,7 @@ def main():
             run_eval_prompting(config, data_handler, model_handler, batch_handler)
         elif config.args.eval_transfer:
             data_handler.LEN = min(data_handler.LEN, 100)
-            run_eval_test_data(config, data_handler, model_handler, batch_handler, patching_utils)
-        elif config.args.eval_extant:
-            print('Running eval extant...')
-            run_eval_extant(config, data_handler, model_handler, batch_handler)
+            run_eval_transfer(config, data_handler, model_handler, batch_handler, patching_utils)
 
 if __name__ == "__main__":
     main()

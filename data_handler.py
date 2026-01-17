@@ -12,7 +12,7 @@ class DataHandler:
         self.config = config
         self.model_handler = model_handler
         self.device = self.config.args.device
-        self.no_generation_prompt_for_eval_test = False
+        self.no_generation_prompt_for_eval_transfer = False
         
         file_paths = {
             'base_desired': f"{self.config.args.data_path}/{self.config.args.base}-desired-all.jsonl",
@@ -35,10 +35,8 @@ class DataHandler:
             'source_desired': self.load_from_jsonl(file_paths['source_desired']),
             'source_undesired': self.load_from_jsonl(file_paths['source_undesired']),
             'base_test': self.load_from_jsonl(file_paths['base_test']) if self.config.args.eval_test else None,
-            'eval_test': self.load_from_jsonl(file_paths['eval_test']) if self.config.args.eval_transfer else None
+            'eval_transfer': self.load_from_jsonl(file_paths['eval_transfer']) if self.config.args.eval_transfer else None,
         }
-
-        jsons = self.filter_jsons(jsons)
 
         print('Making base templated prompts...')
         base = {
@@ -96,7 +94,7 @@ class DataHandler:
                     "{{ '\\n<|assistant|>\\n' }}\n" \
                     "{%- endif %}"
 
-                start_indices = [i for i in range(len(jsons['eval_test'])) if i % 5 == 0]
+                start_indices = [i for i in range(len(jsons['eval_transfer'])) if i % 5 == 0]
 
                 selected_starts = random.sample(start_indices, 40)
 
@@ -104,20 +102,20 @@ class DataHandler:
                 for start in selected_starts:
                     block = [start + offset for offset in range(5)]
                     random_indices.extend(block)
-                print('###### Making eval_test dataset templated prompts...')
+                print('###### Making eval_transfer dataset templated prompts...')
                 self.eval_transfer = {
-                    "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_test'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=None),
-                    "answers": [p['base']['correct_answer'] for p in jsons['eval_test']] if self.config.args.judge_answer_match else None,
+                    "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_transfer'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=None),
+                    "answers": [p['base']['correct_answer'] for p in jsons['eval_transfer']] if self.config.args.judge_answer_match else None,
                 }
                 if self.eval_transfer['queries']['input_ids'].shape[1] < self.max_len:
                     self.eval_transfer = {
-                        "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_test'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=self.max_len),
+                        "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_transfer'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=self.max_len),
                         "answers": None
                     }
                 else:
                     self.max_len = self.eval_transfer['queries']['input_ids'].shape[1]
                 
-                self.no_generation_prompt_for_eval_test = False
+                self.no_generation_prompt_for_eval_transfer = False
                 self.model_handler.tokenizer.chat_template = orig_template
 
         self.base_toks = {
@@ -178,8 +176,8 @@ class DataHandler:
     def get_templated_prompts(self, prompts, _base_completion=None, only_q=False, add_generation_prompt=False):
         if only_q:
             prompt_lengths = None
-            if self.no_generation_prompt_for_eval_test:
-                print('Explicitly setting add_generation_prompt to False for eval_test dataset.')
+            if self.no_generation_prompt_for_eval_transfer:
+                print('Explicitly setting add_generation_prompt to False for eval_transfer dataset.')
                 add_generation_prompt = False
             print(prompts[0]['prompt'], [p['role'] == 'assistant' for p in prompts[0]['prompt']])
             assistant_exists = any([p['role'] == 'assistant' for p in prompts[0]['prompt']])

@@ -527,82 +527,16 @@ def run_eval_pyreft(config, data_handler, model_handler, batch_handler):
 
                 batch_handler.update()
             save_prompt_responses(decoded_responses["pyreft"][reps][str(topk)], gen_file)
-            # call_judge(model_handler, config, data_handler, ["pyreft"], [reps], [topk], gen_file=gen_file.replace('.txt', '.json'))
 
+        # Delete and reload model to clear PyReFT modifications
         del model
         torch.cuda.empty_cache()
         gc.collect()
         model = model_handler.load_model(config.args.model_id, config.args.device)
         model.tokenizer = model_handler.tokenizer
-def run_eval_attributions(config, data_handler, model_handler, batch_handler):
-    model = model_handler.model
 
-    patching_reps = load_patching_reps(data_handler, model_handler)
-    ablation = 'steer'
-    reps_type = 'random' if config.args.patch_algo == 'random' else 'targeted'
-    with open(f"{config.get_output_prefix().replace('normalized-results', 'runs')}/eval/gen_best_config_summary.json", 'r') as f:
-        decoded_responses = json.load(f)
-    try:
-        decoded_responses = [d for d in decoded_responses if d["model"] == config.args.model_id.split('/')[-1]][0]
-    except Exception as e:
-        print(decoded_responses)
-        raise ValueError(f"No responses found for model {config.args.model_id.split('/')[-1]} in the provided JSON file.")
 
-    decoded_responses = decoded_responses["best"][f"from_{config.args.source}_to_{config.args.base}"][f"{config.args.patch_algo}"]
-    topk = decoded_responses["topk"]
-    sf = decoded_responses["sf"]
-    config.args.N = sf
-
-    if config.args.patch_algo == 'probes':
-        logit_metric = 'probes'
-    elif config.args.patch_algo == 'random':
-        logit_metric = 'random'
-    else:
-        logit_metric = 'numerator_1'
-    topk_df = pd.read_csv(f"{config.get_output_prefix().replace('normalized-results', 'runs')}/eval/{logit_metric}_{reps_type}_{topk}.csv")
-    batch_handler = BatchHandler(config, data_handler)
-    edited_outputs = []
-    original_outputs = []
-    data_handler.LEN = 50
-    attn_pres = []
-    attn_posts = []
-    print('Batch size: ', config.args.batch_size)
-    for idx in tqdm(range(0, data_handler.LEN, config.args.batch_size)):
-        gen_qs_toks = select_gen_qs_toks(config, batch_handler)
-        edited_output, post_q_tensor, post_k_tensor = get_attn_tensors(model, gen_qs_toks, patching_reps[ablation], topk_df, config.args.N, ablation, model_handler.dim, edit=True)
-        original_output, pre_q_tensor, pre_k_tensor = get_attn_tensors(model, gen_qs_toks, patching_reps[ablation], topk_df, config.args.N, ablation, model_handler.dim, edit=False)
-
-        if not 'attn_pre' in locals():
-            attn_pres.append(compute_attention_weights(pre_q_tensor, pre_k_tensor).squeeze(2))
-            attn_posts.append(compute_attention_weights(post_q_tensor, post_k_tensor).squeeze(2))
-        else:
-            attn_pres.append(compute_attention_weights(pre_q_tensor, pre_k_tensor).squeeze(2))
-            attn_posts.append(compute_attention_weights(post_q_tensor, post_k_tensor).squeeze(2))
-            # attn_pre = torch.cat([attn_pre, compute_attention_weights(pre_q_tensor, pre_k_tensor)], dim=2)
-            # attn_post = torch.cat([attn_post, compute_attention_weights(post_q_tensor, post_k_tensor)], dim=2)
-        edited_outputs.append(edited_output.squeeze(0))
-        original_outputs.append(original_output.squeeze(0))
-        batch_handler.update()
-        gc.collect()
-        torch.cuda.empty_cache()
-    layer_head_list = []
-    for _, row in topk_df.iterrows():
-        layer = row['layer']
-        head = row['neuron']
-        layer_head_list.append((layer, head))
-    for idx in range(data_handler.LEN):
-        os.makedirs(f"{config.get_output_prefix()}/eval/attributions/", exist_ok=True)
-        attn_pre_idxed = attn_pres[idx]
-        attn_post_idxed = attn_posts[idx]
-        plot_layer_heads(attn_pre_idxed, attn_post_idxed, layer_head_list, gen_qs_toks['input_ids'].shape[-1], model_handler.tokenizer.convert_ids_to_tokens(original_outputs[idx]), model_handler.tokenizer.convert_ids_to_tokens(edited_outputs[idx]), f"{config.get_output_prefix()}/eval/attributions/attn_heads_{reps_type}_{ablation}_topk_{topk}_idx_{idx}.png")
-
-    # attn_pre_avg = torch.mean(torch.stack(attn_pres), dim=0)
-    # attn_post_avg = torch.mean(torch.stack(attn_posts), dim=0)
-    # plot_layer_heads(attn_pre_avg, attn_post_avg, layer_head_list, gen_qs_toks['input_ids'].shape[-1], model_handler.tokenizer.convert_ids_to_tokens(original_outputs[0]), model_handler.tokenizer.convert_ids_to_tokens(edited_outputs[0]), f"{config.get_output_prefix()}/eval/attributions/attn_heads_{reps_type}_{ablation}_topk_{topk}_avg.png", avg=True)
-
-def run_eval_test_data(config, data_handler, model_handler, batch_handler, patching_utils):
-    
-    # Needs N= 1, topk=1 for transfer to be done explicitly. Not baked into the code rn.
+def run_eval_transfer(config, data_handler, model_handler, batch_handler, patching_utils):
     best_algorithms = pd.read_csv('/mnt/align4_drive/arunas/rm-interp-minimal/normalized-results/new-accuracies/plots/best_topk_N_per_method_per_ablation.csv')
     best_algorithms = best_algorithms[best_algorithms['ablation'] == config.args.ablation]
 
