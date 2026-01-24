@@ -137,7 +137,7 @@ def run_eval(config, data_handler, model_handler, batch_handler, patching_utils,
                     if not os.path.exists(f"{config.get_output_prefix()}/eval/{logit_metric}_{reps_type}_{topk}.csv"):
                         topk_df = save_top_k(reps_type, config, model, topk, logits, logit_metric)
                     else:
-                        topk_df = pd.read_csv(f"./results/{config.args.model_id.split('/')[-1]}/from_{config.args.source}_to_{config.args.base}/{config.args.patch_algo}/eval/{logit_metric}_{reps_type}_{topk}.csv")
+                        topk_df = pd.read_csv(f"{config.get_output_prefix()}/eval/{logit_metric}_{reps_type}_{topk}.csv")
 
                     batch_handler = BatchHandler(config, data_handler)
                     len_gen_qs = select_gen_qs_toks(config, data_handler)['input_ids'].shape[0]
