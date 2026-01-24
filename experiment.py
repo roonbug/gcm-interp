@@ -28,7 +28,7 @@ class Experiment:
         self.patching_logits = []
 
     def run(self):
-        for idx in tqdm(range(self.config.args.batch_start, self.data_handler.LEN, self.batch_size)):
+        for idx in tqdm(range(0, self.data_handler.LEN, self.batch_size)):
             if os.path.exists(f'{self.config.get_output_prefix()}/{self.which_patch}_{idx}.pt'):
                 continue
             start = idx

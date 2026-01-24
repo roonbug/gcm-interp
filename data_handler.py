@@ -15,18 +15,20 @@ class DataHandler:
         self.no_generation_prompt_for_eval_transfer = False
         
         file_paths = {
-            'base_desired': f"{self.config.args.data_path}/{self.config.args.base}-desired-all.jsonl",
-            'base_undesired': f"{self.config.args.data_path}/{self.config.args.base}-undesired-all.jsonl",
-            'source_desired': f"{self.config.args.data_path}/{self.config.args.source}-desired-all.jsonl",
-            'source_undesired': f"{self.config.args.data_path}/{self.config.args.source}-undesired-all.jsonl",
+            'base_desired': f"{self.config.args.data_path}/{self.config.args.source}/{self.config.args.base}-desired-all.jsonl",
+            'base_undesired': f"{self.config.args.data_path}/{self.config.args.source}/{self.config.args.base}-undesired-all.jsonl",
+            'source_desired': f"{self.config.args.data_path}/{self.config.args.source}/{self.config.args.source}-desired-all.jsonl",
+            'source_undesired': f"{self.config.args.data_path}/{self.config.args.source}/{self.config.args.source}-undesired-all.jsonl",
             'base_test': (
-                f"{self.config.args.data_path}/{self.config.args.base}-test.jsonl"
+                f"{self.config.args.data_path}/{self.config.args.source}/{self.config.args.base}-test.jsonl"
                 if isinstance(self.config.args.eval_test, bool) and self.config.args.eval_test
                 else f"{self.config.args.eval_test}"
                 if isinstance(self.config.args.eval_test, str) and self.config.args.eval_test
                 else None
             ),
             'eval_transfer': f"./data/eval/from_{self.config.args.source}_to_{self.config.args.base}/{self.config.args.eval_transfer}.jsonl" if self.config.args.eval_transfer else None,
+            'steering_add': self.config.args.steering_add_path,
+            'steering_sub': self.config.args.steering_sub_path
         }
 
         jsons = {
@@ -36,6 +38,8 @@ class DataHandler:
             'source_undesired': self.load_from_jsonl(file_paths['source_undesired']),
             'base_test': self.load_from_jsonl(file_paths['base_test']) if self.config.args.eval_test else None,
             'eval_transfer': self.load_from_jsonl(file_paths['eval_transfer']) if self.config.args.eval_transfer else None,
+            'steering_add': self.load_from_jsonl(file_paths['steering_add']) if self.config.args.steering_add_path else None,
+            'steering_sub': self.load_from_jsonl(file_paths['steering_sub']) if self.config.args.steering_sub_path else None,
         }
 
         print('Making base templated prompts...')
@@ -60,13 +64,21 @@ class DataHandler:
             'undesired': self.get_templated_prompts(jsons['source_undesired'], only_q=True, add_generation_prompt=True)
         }
         
-        all_templated_prompts = base['desired'] + base['undesired'] + source_qs['desired'] + source_qs['undesired']
+        steering = {
+            "add_qs": self.get_templated_prompts(jsons['steering_add'], only_q=True, add_generation_prompt=True) if jsons['steering_add'] else None,
+            "sub_qs": self.get_templated_prompts(jsons['steering_sub'], only_q=True, add_generation_prompt=True) if jsons['steering_sub'] else None
+        }
+
+        print(file_paths['steering_add'], file_paths['steering_sub'])
+        if not (self.config.args.steering_add_path is None) and not (self.config.args.steering_sub_path is None):
+            all_templated_prompts = base['desired'] + base['undesired'] + source_qs['desired'] + source_qs['undesired'] + steering['add_qs'] + steering['sub_qs']
+        else:
+            all_templated_prompts = base['desired'] + base['undesired'] + source_qs['desired'] + source_qs['undesired']
         all_tokenized_prompts = self.tokenize_prompts(all_templated_prompts, max_length=None)
         self.max_len = all_tokenized_prompts['input_ids'].shape[1]
 
         if self.config.args.eval_model:
             orig_template = self.model_handler.tokenizer.chat_template
-            self.judge_qs = self.load_from_jsonl(f"{self.config.args.data_path}/judge-qs.jsonl")
             if self.config.args.eval_transfer:
                 # Removing the system prompt for eval_test dataset
                 if config.args.model_id.split('/')[1] == 'Qwen1.5-14B-Chat':
@@ -104,12 +116,12 @@ class DataHandler:
                     random_indices.extend(block)
                 print('###### Making eval_transfer dataset templated prompts...')
                 self.eval_transfer = {
-                    "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_transfer'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=None),
-                    "answers": [p['base']['correct_answer'] for p in jsons['eval_transfer']] if self.config.args.judge_answer_match else None,
+                    "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_transfer'][j] for j in random_indices], only_q=True, add_generation_prompt=True), k=200), max_length=None),
+                    "answers": None,
                 }
                 if self.eval_transfer['queries']['input_ids'].shape[1] < self.max_len:
                     self.eval_transfer = {
-                        "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_transfer'][j] for j in random_indices], only_q=True, add_generation_prompt=not(config.args.judge_answer_match)), k=200), max_length=self.max_len),
+                        "queries": self.tokenize_prompts(random.sample(self.get_templated_prompts([jsons['eval_transfer'][j] for j in random_indices], only_q=True, add_generation_prompt=True), k=200), max_length=self.max_len),
                         "answers": None
                     }
                 else:
@@ -140,6 +152,10 @@ class DataHandler:
             "pyreft": self.get_resp_start_pos(self.pyreft_toks, self.model_handler.marker, self.model_handler.tokenizer)
         }
 
+        self.steering_qs_toks = {
+            "add": self.tokenize_prompts(steering["add_qs"], max_length=self.max_len) if steering["add_qs"] else None,
+            "sub": self.tokenize_prompts(steering["sub_qs"], max_length=self.max_len) if steering["sub_qs"] else None
+        }
 
         if self.config.args.eval_model:
             if self.config.args.eval_transfer:

@@ -84,8 +84,8 @@ def run_eval(config, data_handler, model_handler, batch_handler, patching_utils,
 
     model = model_handler.model
     if not config.args.patch_algo == 'random':
-        if os.path.exists(f"{config.get_output_prefix()}/eval_test/numerator_1_{which_patch}.pt"):
-            logits = torch.load(f"{config.get_output_prefix()}/eval_test/numerator_1_{which_patch}.pt")
+        if os.path.exists(f"{'/'.join(config.get_output_prefix().split('/')[:-3])}/numerator_1_{which_patch}.pt"):
+            logits = torch.load(f"{'/'.join(config.get_output_prefix().split('/')[:-3])}/numerator_1_{which_patch}.pt")
         else:
             logits = load_logits(config, data_handler, which_patch, model_handler)
     else:

@@ -134,13 +134,13 @@ for model_id in [args.model_id]:
         for N in range(10, -1, -1):
             for topk in tqdm([0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.5, 1], desc=f'topk for {N}'):
                 if args.ablation in ['steer', 'mean']:
-                    gen_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval_test/{N}_{patch}_{args.ablation}_topk_{topk}_gen.json'
-                    acc_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval_test/{N}_{patch}_{args.ablation}_topk_{topk}_gen_accuracy.json'
-                    acc_resp_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval_test/{N}_{patch}_{args.ablation}_topk_{topk}_gen_accuracy_responses.json'
+                    gen_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval_test/{N}_{patch}_{args.ablation}_{topk}_gen.json'
+                    acc_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval_test/{N}_{patch}_{args.ablation}_{topk}_gen_accuracy.json'
+                    acc_resp_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval_test/{N}_{patch}_{args.ablation}_{topk}_gen_accuracy_responses.json'
                 elif args.ablation == 'pyreft':
-                    gen_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval/{N}_{patch}_{args.ablation}_topk_{topk}_gen.json'
-                    acc_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval/{N}_{patch}_{args.ablation}_topk_{topk}_gen_accuracy.json'
-                    acc_resp_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval/{N}_{patch}_{args.ablation}_topk_{topk}_gen_accuracy_responses.json'
+                    gen_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval/{N}_{patch}_{args.ablation}_{topk}_gen.json'
+                    acc_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval/{N}_{patch}_{args.ablation}_{topk}_gen_accuracy.json'
+                    acc_resp_path = f'{RM_INTERP_REPO}/runs-new/{model_id}/from_{args.source}_to_{args.base}/{patch_algo}/eval/{N}_{patch}_{args.ablation}_{topk}_gen_accuracy_responses.json'
 
                 if os.path.exists(acc_path) and os.path.exists(acc_resp_path):
                     print(f"Skipping existing eval for Ablation: {args.ablation}, Reps: {patch}, TopK: {topk}, N: {N}")

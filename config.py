@@ -14,7 +14,7 @@ class Config:
         self.args = self.parse_arguments()
 
 
-        self.args.data_path = f"./data/{self.args.model_id.split('/')[-1]}/logits/{self.args.source}"
+        self.args.data_path = f"./data/{self.args.model_id.split('/')[-1]}/"
 
         if self.args.patch_algo == None:
             self.args.patch_algo = 'atp'
@@ -38,6 +38,8 @@ class Config:
         parser.add_argument('-patch_algo', '--patch_algo', type=str, help='acp/atp? acp for activation patching, atp for attribution patching')
         parser.add_argument('-source', '--source', type=str, help='Patch from source')
         parser.add_argument('-base', '--base', type=str, help='Patch to base')
+        parser.add_argument('-steering_add_path', '--steering_add_path', type=str, help='steering reps to add')
+        parser.add_argument('-steering_sub_path', '--steering_sub_path', type=str, help='steering reps to subtract')
 
         args = parser.parse_args()
         if not (args.patch_model or args.eval_model):
@@ -51,12 +53,24 @@ class Config:
                 parser.error("-base argument is required when --patch_model is set")
 
         if args.eval_model:
-            if not args.judge_id:
-                parser.error("--judge_id argument is required when --eval_model is set")
             if not args.eval_test:
                 args.eval_train = True
+            if isinstance(args.eval_test, str) and not os.path.exists(args.eval_test):
+                parser.error(f"The provided eval_test path '{args.eval_test}' does not exist.")
+            if isinstance(args.eval_test, str):
+                args.test_dataset = args.eval_test.split('/')[-2]
+                print(f"Steering dataset set to: {args.test_dataset}")
+            elif isinstance(args.eval_test, bool) and args.steering:
+                args.test_dataset = args.source
 
-        return parser.parse_args()
+            if 'single' in args.test_dataset:
+                args.max_new_tokens = 3
+            elif 'long' in args.test_dataset:
+                args.max_new_tokens = 256
+            
+            args.steering_type = 'last_token'
+
+        return args
 
     def save_to_yaml(self, file_path, args):
         args_dict = vars(args)
@@ -77,8 +91,12 @@ class Config:
     
     def set_output_prefix(self):
         model = self.args.model_id.split('/')[-1]
-        if self.args.patch_model or self.args.eval_model:
-            self.output_prefix = f"./normalized-results/{model}/from_{self.args.source}_to_{self.args.base}/{self.args.patch_algo}/"
+        eval_test_dir = self.args.eval_test.split('/')[-2] if isinstance(self.args.eval_test, str) else ''
+        steering_dir = self.args.steering_add_path.split('/')[-2] if self.args.steering_add_path else ''
+        if self.args.patch_model:
+            self.output_prefix = f"./results/{model}/from_{self.args.source}_to_{self.args.base}/{self.args.patch_algo}/"
+        if self.args.eval_model:
+            self.output_prefix = f"./results/{model}/from_{self.args.source}_to_{self.args.base}/{self.args.patch_algo}/{eval_test_dir}_eval/{steering_dir}_steer/"
         print("op prefix ", self.output_prefix)
         return self.output_prefix
     

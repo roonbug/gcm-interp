@@ -15,8 +15,8 @@ def mean_ablations_cache(model, data_handler, batch_size=9, key='desired'):
     return torch.stack(attn_cache)
 
 def steering_reps_cache(model, data_handler, batch_size=9, key='desired', mean=True):
-    source_toks = data_handler.source_qs_toks[key]
-    base_toks = data_handler.base_qs_toks[key]
+    source_toks = data_handler.steering_qs_toks['add']
+    base_toks = data_handler.steering_qs_toks['sub']
     num_layers = len(model.model.layers)
     steer = [[] for _ in range(num_layers)]
     base = [[] for _ in range(num_layers)]
