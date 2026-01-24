@@ -32,23 +32,10 @@ class BatchHandler:
             "pyreft": self.data_handler.response_start_positions["pyreft"][self.start:self.stop]
         }
 
-        self.prompting_toks = {
-            "input_ids": self.data_handler.prompting_toks["input_ids"][self.start:self.stop],
-            "attention_mask": self.data_handler.prompting_toks["attention_mask"][self.start:self.stop]
-        }
-
         self.pyreft_toks = {
             "input_ids": self.data_handler.pyreft_toks["input_ids"][self.start:self.stop],
             "attention_mask": self.data_handler.pyreft_toks["attention_mask"][self.start:self.stop]
         }
-
-        if self.config.args.eval_extant:
-            self.mmlu_toks = {
-                "input_ids": self.data_handler.mmlu_prompts["input_ids"][self.start:self.stop],
-                "attention_mask": self.data_handler.mmlu_prompts["attention_mask"][self.start:self.stop]
-            }
-
-            self.mmlu_answers = self.data_handler.mmlu_answers[self.start:self.stop]
 
         if self.config.args.eval_transfer:
             self.eval_transfer = {
@@ -85,22 +72,11 @@ class BatchHandler:
             "pyreft": self.data_handler.response_start_positions["pyreft"][self.start:self.stop]
         }
 
-        self.prompting_toks = {
-            "input_ids": self.data_handler.prompting_toks["input_ids"][self.start:self.stop],
-            "attention_mask": self.data_handler.prompting_toks["attention_mask"][self.start:self.stop]
-        }
-
         self.pyreft_toks = {
             "input_ids": self.data_handler.pyreft_toks["input_ids"][self.start:self.stop],
             "attention_mask": self.data_handler.pyreft_toks["attention_mask"][self.start:self.stop]
         }
 
-        if self.config.args.eval_extant:
-            self.mmlu_toks = {
-                "input_ids": self.data_handler.mmlu_prompts["input_ids"][self.start:self.stop],
-                "attention_mask": self.data_handler.mmlu_prompts["attention_mask"][self.start:self.stop]
-            }
-            self.mmlu_answers = self.data_handler.mmlu_answers[self.start:self.stop]
         if self.config.args.eval_transfer:
             self.eval_transfer = {
                 "queries": {

@@ -54,9 +54,7 @@ class ModelHandler:
         return tokenizer
 
     def load_model(self, model_id, device, model_type="causal"):
-        if model_type == "judge":
-            return AutoModelForCausalLM.from_pretrained(model_id, device_map=device, torch_dtype=torch.bfloat16, token=os.environ['HF_TOKEN'], quantization_config=self.nf4_config)
-        elif self.config.args.pyreft:
+        if self.config.args.pyreft:
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_use_double_quant=True,
@@ -64,11 +62,6 @@ class ModelHandler:
                 bnb_4bit_compute_dtype=torch.bfloat16
             )
             return AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, quantization_config=bnb_config, device_map=device, attn_implementation="eager", trust_remote_code=True)
-        elif self.config.args.vllm:
-            from nnsight.modeling.vllm import VLLM
-            return VLLM(model_id, device = "auto", dispatch = True, tokenizer=self.tokenizer, torch_dtype=torch.bfloat16, token=os.environ['HF_TOKEN'])
-        elif self.config.args.aidevi:
-            return LanguageModel(model_id, device_map=device, tokenizer=self.tokenizer, torch_dtype=torch.bfloat16, token=os.environ['HF_TOKEN'], quantization_config=self.nf4_config, remote=True)
         else:
             return LanguageModel(model_id, device_map=device, tokenizer=self.tokenizer, torch_dtype=torch.bfloat16, token=os.environ['HF_TOKEN'], quantization_config=self.nf4_config, dispatch=True)
     
